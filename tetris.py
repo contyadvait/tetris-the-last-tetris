@@ -196,11 +196,13 @@ class Blocker:
         self.game_over = False
 
     def move(self):
-        self.x = self.x + self.velocity * 5
+        # Constrain x position within grid
+        self.x = max(0, min(GRID_WIDTH - 1, self.x + self.velocity))
         self.velocity = 0
 
     def draw(self):
-        pygame.draw.rect(screen, self.image, (self.x * BLOCK_SIZE, self.y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+        # Use screen's blit method with the loaded image
+        screen.blit(self.image, (self.x * BLOCK_SIZE, self.y * BLOCK_SIZE))
         
     def check_blocker_collision(self, game):
         # Check if blocker collides with any blocks in the grid
@@ -209,7 +211,7 @@ class Blocker:
                 # Collision with block at same level
                 if y == 0 or game.grid[y-1][self.x] is not None:
                     # Game over if block above or at top
-                    self.game_over = True        
+                    self.game_over = True      
 
 def play_replay(replay_data):
     clock = pygame.time.Clock()
@@ -218,20 +220,32 @@ def play_replay(replay_data):
     game.piece_sequence = replay_data['piece_sequence']
     moves = replay_data['moves']
     move_index = 0
-    blocker = Blocker()
+    
+    # Modify blocker spawning
+    blockers = []
+    blocker_spawn_interval = 60  # Spawn a new blocker every 60 frames
+    frame_count = 0
     
     while move_index < len(moves) or not game.game_over:
         clock.tick(30)  # Ensure consistent timing
+        frame_count += 1
+        
+        # Spawn new blockers periodically
+        if frame_count % blocker_spawn_interval == 0:
+            new_blocker = Blocker()
+            blockers.append(new_blocker)
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_a or event.key == pygame.K_LEFT:
-                    blocker.velocity = -1
+                    for blocker in blockers:
+                        blocker.velocity = -1
                 if event.key == pygame.K_d or event.key == pygame.K_RIGHT:
-                    blocker.velocity = 1
-
+                    for blocker in blockers:
+                        blocker.velocity = 1
+        
         # Process moves more carefully
         if move_index < len(moves):
             move = moves[move_index]
@@ -242,58 +256,74 @@ def play_replay(replay_data):
             elif move['type'] == 'rotate':
                 game.rotate_piece()
                 move_index += 1
-
-        blocker.move()
-        blocker.check_blocker_collision(game=game)
         
-        if blocker.game_over or game.game_over:
+        # Move and check collisions for all blockers
+        for blocker in blockers[:]:
+            blocker.move()
+            blocker.y += 1  # Make blockers fall down
+            
+            # Remove blockers that go off screen
+            if blocker.y >= GRID_HEIGHT:
+                blockers.remove(blocker)
+                continue
+            
+            blocker.check_blocker_collision(game=game)
+            
+            if blocker.game_over:
+                break
+        
+        if any(blocker.game_over for blocker in blockers) or game.game_over:
             break
         
         game.update()
         game.draw()
         
+        # Draw blockers
+        for blocker in blockers:
+            blocker.draw()
+        
         pygame.display.flip()
 
 def main():
-    clock = pygame.time.Clock()
-    game = Tetris()
-    fall_time = 0
-    fall_speed = 240
+    # clock = pygame.time.Clock()
+    # game = Tetris()
+    # fall_time = 0
+    # fall_speed = 240
 
-    while not game.game_over:
-        fall_time += clock.get_rawtime()
-        clock.tick(fall_speed)
+    # while not game.game_over:
+    #     fall_time += clock.get_rawtime()
+    #     clock.tick(fall_speed)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    game.move(-1, 0)
-                elif event.key == pygame.K_RIGHT:
-                    game.move(1, 0)
-                elif event.key == pygame.K_DOWN:
-                    game.move(0, 1)
-                elif event.key == pygame.K_UP:
-                    game.rotate_piece()
-                elif event.key == pygame.K_SPACE:
-                    while game.move(0, 1):
-                        pass
+    #     for event in pygame.event.get():
+    #         if event.type == pygame.QUIT:
+    #             return
+    #         if event.type == pygame.KEYDOWN:
+    #             if event.key == pygame.K_LEFT:
+    #                 game.move(-1, 0)
+    #             elif event.key == pygame.K_RIGHT:
+    #                 game.move(1, 0)
+    #             elif event.key == pygame.K_DOWN:
+    #                 game.move(0, 1)
+    #             elif event.key == pygame.K_UP:
+    #                 game.rotate_piece()
+    #             elif event.key == pygame.K_SPACE:
+    #                 while game.move(0, 1):
+    #                     pass
 
-        if fall_time >= fall_speed:
-            game.update()
-            fall_time = 0
+    #     if fall_time >= fall_speed:
+    #         game.update()
+    #         fall_time = 0
 
-        game.draw()
+    #     game.draw()
         
-        font = pygame.font.Font(None, 36)
-        score_text = font.render(f'Score: {game.score}', True, (255, 255, 255))
-        screen.blit(score_text, (10, 10))
+    #     font = pygame.font.Font(None, 36)
+    #     score_text = font.render(f'Score: {game.score}', True, (255, 255, 255))
+    #     screen.blit(score_text, (10, 10))
         
-        pygame.display.flip()
+    #     pygame.display.flip()
 
-    # Save replay when game is over
-    game.save_replay()
+    # # Save replay when game is over
+    # game.save_replay()
 
     while True:
         screen.fill((0, 0, 0))
