@@ -119,6 +119,7 @@ class Tetris:
                     new_x = self.current_piece.x + x + offset_x
                     new_y = self.current_piece.y + y + offset_y
 
+                    # More precise boundary checking
                     if (new_x < 0 or new_x >= GRID_WIDTH or 
                         new_y >= GRID_HEIGHT or 
                         (new_y >= 0 and self.grid[new_y][new_x] is not None)):
@@ -201,7 +202,7 @@ class Blocker:
     def draw(self):
         pygame.draw.rect(screen, self.image, (self.x * BLOCK_SIZE, self.y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
         
-    def check_blocker_collision(self):
+    def check_blocker_collision(self, game):
         # Check if blocker collides with any blocks in the grid
         for y, row in enumerate(game.grid):
             if y == self.y and row[self.x] is not None:
@@ -219,7 +220,9 @@ def play_replay(replay_data):
     move_index = 0
     blocker = Blocker()
     
-    while move_index < len(moves) and not blocker.game_over:
+    while move_index < len(moves) or not game.game_over:
+        clock.tick(30)  # Ensure consistent timing
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return
@@ -229,24 +232,25 @@ def play_replay(replay_data):
                 if event.key == pygame.K_d or event.key == pygame.K_RIGHT:
                     blocker.velocity = 1
 
-        # Process the next move
+        # Process moves more carefully
         if move_index < len(moves):
             move = moves[move_index]
             if move['type'] == 'move':
-                game.move(move['data']['dx'], move['data']['dy'])
+                # Ensure the move is valid before applying
+                if game.move(move['data']['dx'], move['data']['dy']):
+                    move_index += 1
             elif move['type'] == 'rotate':
                 game.rotate_piece()
-            move_index += 1
+                move_index += 1
 
         blocker.move()
-        blocker.check_blocker_collision()
-        if blocker.game_over:
+        blocker.check_blocker_collision(game=game)
+        
+        if blocker.game_over or game.game_over:
             break
+        
         game.update()
         game.draw()
-        
-        # Draw score and replay indicator
-        font = pygame.font.Font(None, 36)
         
         pygame.display.flip()
 
@@ -254,11 +258,11 @@ def main():
     clock = pygame.time.Clock()
     game = Tetris()
     fall_time = 0
-    fall_speed = 500
+    fall_speed = 240
 
     while not game.game_over:
         fall_time += clock.get_rawtime()
-        clock.tick()
+        clock.tick(fall_speed)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
