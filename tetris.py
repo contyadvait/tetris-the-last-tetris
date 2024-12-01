@@ -75,7 +75,7 @@ def start_screen():
     
     # Dynamically adjust font sizes based on screen width
     title_font = load_font(min(72, SCREEN_WIDTH // 10))
-    subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+    subtitle_font = load_font(min(56, SCREEN_WIDTH // 12))
     
     # Draw instructions
     draw_centered_text(screen, 'Press SPACEBAR to Start', subtitle_font, WHITE, SCREEN_HEIGHT * 2 // 3)
@@ -377,7 +377,7 @@ def play_replay(replay_data):
     while True:
         screen.fill(BLACK)
         game_over_font = load_font(min(72, SCREEN_WIDTH // 10))
-        subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+        subtitle_font = load_font(min(56, SCREEN_WIDTH // 12))
 
         if hit:
             draw_centered_text(screen, 'Game Over', game_over_font, RED, SCREEN_HEIGHT // 3)
@@ -404,7 +404,7 @@ def main():
     fall_speed = 240
 
     # Use the dynamic font loading function
-    score_font = load_font(min(72, SCREEN_WIDTH // 20))
+    score_font = load_font(min(72, SCREEN_WIDTH // 15))
 
     while not game.game_over:
         fall_time += clock.get_rawtime()
@@ -444,7 +444,7 @@ def main():
     # Game over screen with dynamic font sizing
     screen.fill(BLACK)
     game_over_font = load_font(min(72, SCREEN_WIDTH // 10))
-    subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+    subtitle_font = load_font(min(56, SCREEN_WIDTH // 12))
 
     draw_centered_text(screen, 'Game Over', game_over_font, RED, SCREEN_HEIGHT // 3)
     draw_centered_text(screen, f'Final Score: {game.score}', subtitle_font, WHITE, SCREEN_HEIGHT // 2)
