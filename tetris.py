@@ -19,6 +19,11 @@ SCREEN_HEIGHT = GRID_HEIGHT * BLOCK_SIZE
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption('Tetris')
 
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+
 # Load block images - Replace these paths with your actual image paths
 BLOCK_IMAGES = {
     'I': pygame.image.load('cyan.png'),
@@ -33,6 +38,60 @@ BLOCK_IMAGES = {
 # Scale images to match BLOCK_SIZE
 for key in BLOCK_IMAGES:
     BLOCK_IMAGES[key] = pygame.transform.scale(BLOCK_IMAGES[key], (BLOCK_SIZE, BLOCK_SIZE))
+
+# Load the font only once
+def load_font(size):
+    try:
+        return pygame.font.Font("neuebit.ttf", size)
+    except:
+        # Fallback to system font if custom font fails
+        return pygame.font.Font(None, size)
+
+def draw_centered_text(screen, text, font, color, y_position):
+    """Helper function to draw centered text"""
+    text_surface = font.render(text, True, color)
+    text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, y_position))
+    screen.blit(text_surface, text_rect)
+
+
+def start_screen():
+    """Display start screen with a logo and wait for spacebar"""
+    screen.fill(BLACK)
+    
+    # Load and display logo
+    try:
+        logo = pygame.image.load('logo.png')
+        # Scale logo to fit nicely on screen
+        logo_width = min(SCREEN_WIDTH * 0.8, logo.get_width())
+        logo_height = int(logo.get_height() * (logo_width / logo.get_width()))
+        logo = pygame.transform.scale(logo, (int(logo_width), int(logo_height)))
+        
+        # Center the logo
+        logo_rect = logo.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+        screen.blit(logo, logo_rect)
+    except Exception as e:
+        print(f"Could not load logo: {e}")
+        # Optional: you can add a text fallback if logo fails
+    
+    # Dynamically adjust font sizes based on screen width
+    title_font = load_font(min(72, SCREEN_WIDTH // 10))
+    subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+    
+    # Draw instructions
+    draw_centered_text(screen, 'Press SPACEBAR to Start', subtitle_font, WHITE, SCREEN_HEIGHT * 2 // 3)
+    
+    pygame.display.flip()
+    
+    # Wait for spacebar
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    return True
+
 
 # Tetromino shapes with their corresponding image keys
 SHAPES = [
@@ -189,8 +248,8 @@ class Tetris:
 
 class Blocker:
     def __init__(self):
-        self.x = random.randint(0, GRID_WIDTH - 1)
-        self.y = 0
+        self.x = GRID_WIDTH // 2  # Start in the middle at bottom
+        self.y = GRID_HEIGHT - 1  # Start at the bottom
         self.image = pygame.image.load('character.png')
         self.velocity = 0
         self.game_over = False
@@ -204,14 +263,12 @@ class Blocker:
         # Use screen's blit method with the loaded image
         screen.blit(self.image, (self.x * BLOCK_SIZE, self.y * BLOCK_SIZE))
         
-    def check_blocker_collision(self, game):
+    def check_collision(self, game):
         # Check if blocker collides with any blocks in the grid
-        for y, row in enumerate(game.grid):
-            if y == self.y and row[self.x] is not None:
-                # Collision with block at same level
-                if y == 0 or game.grid[y-1][self.x] is not None:
-                    # Game over if block above or at top
-                    self.game_over = True      
+        # If at the current position there's a block, game over
+        if game.grid[self.y][self.x] is not None:
+            return True
+        return False
 
 def play_replay(replay_data):
     clock = pygame.time.Clock()
@@ -221,18 +278,26 @@ def play_replay(replay_data):
     moves = replay_data['moves']
     move_index = 0
     
-    # Modify blocker spawning
-    blockers = []
-    blocker_spawn_interval = 60  # Spawn a new blocker every 60 frames
-    frame_count = 0
+    hit = False
+
+    # Create player blocker
+    player_blocker = Blocker()
     
-    while move_index < len(moves) or not game.game_over:
-        clock.tick(30)  # Ensure consistent timing
+    # Other blockers falling from the top
+    blockers = []
+    blocker_spawn_interval = 120
+    frame_count = 0
+    blocker_fall_speed = 0
+    
+    while not game.game_over and not player_blocker.game_over:
+        clock.tick(15)
         frame_count += 1
         
-        # Spawn new blockers periodically
+        # Spawn new blockers less frequently
         if frame_count % blocker_spawn_interval == 0:
             new_blocker = Blocker()
+            new_blocker.x = random.randint(0, GRID_WIDTH - 1)
+            new_blocker.y = 0
             blockers.append(new_blocker)
         
         for event in pygame.event.get():
@@ -240,97 +305,215 @@ def play_replay(replay_data):
                 return
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_a or event.key == pygame.K_LEFT:
-                    for blocker in blockers:
-                        blocker.velocity = -1
+                    player_blocker.velocity = -1
                 if event.key == pygame.K_d or event.key == pygame.K_RIGHT:
-                    for blocker in blockers:
-                        blocker.velocity = 1
+                    player_blocker.velocity = 1
         
-        # Process moves more carefully
+        # Process original game moves more carefully
         if move_index < len(moves):
             move = moves[move_index]
+            
+            # Carefully validate and apply moves
             if move['type'] == 'move':
-                # Ensure the move is valid before applying
-                if game.move(move['data']['dx'], move['data']['dy']):
-                    move_index += 1
+                # Try to move regardless of potential collision
+                dx = move['data']['dx']
+                dy = move['data']['dy']
+                
+                # Special handling for rotation and move
+                if dx != 0:
+                    # Horizontal movement
+                    while not game.check_collision(dx, 0):
+                        game.current_piece.x += dx
+                        break
+                
+                if dy != 0:
+                    # Vertical movement
+                    while not game.check_collision(0, dy):
+                        game.current_piece.y += dy
+                        break
+                
+                move_index += 1
+            
             elif move['type'] == 'rotate':
                 game.rotate_piece()
                 move_index += 1
         
-        # Move and check collisions for all blockers
-        for blocker in blockers[:]:
-            blocker.move()
-            blocker.y += 1  # Make blockers fall down
+        # Move and check collisions for falling blockers
+        blocker_fall_speed += 1
+        if blocker_fall_speed >= 10:
+            for blocker in blockers[:]:
+                blocker.move()
+                blocker.y += 1
+                
+                if blocker.y >= GRID_HEIGHT:
+                    blockers.remove(blocker)
+                    continue
             
-            # Remove blockers that go off screen
-            if blocker.y >= GRID_HEIGHT:
-                blockers.remove(blocker)
-                continue
-            
-            blocker.check_blocker_collision(game=game)
-            
-            if blocker.game_over:
-                break
+            blocker_fall_speed = 0
         
-        if any(blocker.game_over for blocker in blockers) or game.game_over:
+        # Move player blocker
+        player_blocker.move()
+        
+        # Check if player blocker collides with any blocks
+        if player_blocker.check_collision(game):
+            player_blocker.game_over = True
+            hit = True
             break
         
         game.update()
         game.draw()
         
-        # Draw blockers
+        # Draw falling blockers
         for blocker in blockers:
             blocker.draw()
         
+        # Draw player blocker
+        player_blocker.draw()
+        
+        pygame.display.flip()
+    
+    # Game over screen logic remains the same
+    # Game over screen
+    while True:
+        screen.fill(BLACK)
+        game_over_font = load_font(min(72, SCREEN_WIDTH // 10))
+        subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+
+        if hit:
+            draw_centered_text(screen, 'Game Over', game_over_font, RED, SCREEN_HEIGHT // 3)
+            draw_centered_text(screen, f'You died because you got hit by the blocks', subtitle_font, WHITE, SCREEN_HEIGHT // 2)
+            draw_centered_text(screen, f'Final Score: {game.score}', subtitle_font, WHITE, SCREEN_HEIGHT * 2 // 3)
+        else:
+            draw_centered_text(screen, 'You win!', game_over_font, WHITE, SCREEN_HEIGHT // 3)
+            draw_centered_text(screen, f'Final Score: {game.score}', subtitle_font, WHITE, SCREEN_HEIGHT // 2)
+
         pygame.display.flip()
 
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
+
 def main():
-    # clock = pygame.time.Clock()
-    # game = Tetris()
-    # fall_time = 0
-    # fall_speed = 240
+    # Add start screen
+    if not start_screen():
+        return
 
-    # while not game.game_over:
-    #     fall_time += clock.get_rawtime()
-    #     clock.tick(fall_speed)
+    clock = pygame.time.Clock()
+    game = Tetris()
+    fall_time = 0
+    fall_speed = 240
 
-    #     for event in pygame.event.get():
-    #         if event.type == pygame.QUIT:
-    #             return
-    #         if event.type == pygame.KEYDOWN:
-    #             if event.key == pygame.K_LEFT:
-    #                 game.move(-1, 0)
-    #             elif event.key == pygame.K_RIGHT:
-    #                 game.move(1, 0)
-    #             elif event.key == pygame.K_DOWN:
-    #                 game.move(0, 1)
-    #             elif event.key == pygame.K_UP:
-    #                 game.rotate_piece()
-    #             elif event.key == pygame.K_SPACE:
-    #                 while game.move(0, 1):
-    #                     pass
+    # Use the dynamic font loading function
+    score_font = load_font(min(72, SCREEN_WIDTH // 20))
 
-    #     if fall_time >= fall_speed:
-    #         game.update()
-    #         fall_time = 0
+    while not game.game_over:
+        fall_time += clock.get_rawtime()
+        clock.tick(fall_speed)
 
-    #     game.draw()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    game.move(-1, 0)
+                elif event.key == pygame.K_RIGHT:
+                    game.move(1, 0)
+                elif event.key == pygame.K_DOWN:
+                    game.move(0, 1)
+                elif event.key == pygame.K_UP:
+                    game.rotate_piece()
+                elif event.key == pygame.K_SPACE:
+                    while game.move(0, 1):
+                        pass
+
+        if fall_time >= fall_speed:
+            game.update()
+            fall_time = 0
+
+        game.draw()
         
-    #     font = pygame.font.Font(None, 36)
-    #     score_text = font.render(f'Score: {game.score}', True, (255, 255, 255))
-    #     screen.blit(score_text, (10, 10))
+        # Use dynamically sized font
+        score_text = score_font.render(f'Score: {game.score}', True, WHITE)
+        screen.blit(score_text, (10, 10))
         
-    #     pygame.display.flip()
+        pygame.display.flip()
 
-    # # Save replay when game is over
-    # game.save_replay()
+    # Save replay when game is over
+    game.save_replay()
+
+    # Game over screen with dynamic font sizing
+    screen.fill(BLACK)
+    game_over_font = load_font(min(72, SCREEN_WIDTH // 10))
+    subtitle_font = load_font(min(56, SCREEN_WIDTH // 20))
+
+    draw_centered_text(screen, 'Game Over', game_over_font, RED, SCREEN_HEIGHT // 3)
+    draw_centered_text(screen, f'Final Score: {game.score}', subtitle_font, WHITE, SCREEN_HEIGHT // 2)
+    draw_centered_text(screen, 'Press SPACEBAR to continue', subtitle_font, WHITE, SCREEN_HEIGHT * 2 // 3)
+    
+    pygame.display.flip()
+
+    # Wait for spacebar to continue to replay
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    waiting = False
+
+    # Load and play the replay
+    replay_data = Tetris.load_replay()
+    play_replay(replay_data)
+    clock = pygame.time.Clock()
+    game = Tetris()
+    fall_time = 0
+    fall_speed = 240
+
+    while not game.game_over:
+        fall_time += clock.get_rawtime()
+        clock.tick(fall_speed)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    game.move(-1, 0)
+                elif event.key == pygame.K_RIGHT:
+                    game.move(1, 0)
+                elif event.key == pygame.K_DOWN:
+                    game.move(0, 1)
+                elif event.key == pygame.K_UP:
+                    game.rotate_piece()
+                elif event.key == pygame.K_SPACE:
+                    while game.move(0, 1):
+                        pass
+
+        if fall_time >= fall_speed:
+            game.update()
+            fall_time = 0
+
+        game.draw()
+        
+        font = pygame.font.Font("neuebit.ttf", 36)
+        score_text = font.render(f'Score: {game.score}', True, (255, 255, 255))
+        screen.blit(score_text, (10, 10))
+        
+        pygame.display.flip()
+
+    # Save replay when game is over
+    game.save_replay()
 
     while True:
         screen.fill((0, 0, 0))
-        font = pygame.font.Font(None, 72)
-        game_over_text = font.render('PART 2: \nDODGE THE BLOCKS!', True, (255, 0, 0))
+        font = pygame.font.Font("neuebit.ttf", 72)
+        game_over_text = font.render('Part 2', True, (255, 0, 0))
+        game_over_text2 = font.render('Dodge the blocks!', True, (255, 0, 0))
+        screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 - 50))
         screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 - 50))
         pygame.display.flip()
+        time.sleep(2)   
 
         # Load and play the replay
         replay_data = Tetris.load_replay()
